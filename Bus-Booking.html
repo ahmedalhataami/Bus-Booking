@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>نظام حجز الباصات</title>
+  <style>
+    body { font-family: Arial; direction: rtl; background: #f4f4f4; padding: 20px; }
+
+    #loginPage, #mainSystem { display: none; }
+
+    #loginPage {
+      max-width: 400px;
+      margin: 100px auto;
+      padding: 20px;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 0 10px #ccc;
+    }
+
+    h1, h2 { color: #333; }
+    label { display: block; margin-top: 10px; }
+    input, button { width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box; }
+    button { background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #fff; }
+    th, td { border: 1px solid #ccc; padding: 10px; text-align: center; }
+    form { background: #fff; padding: 20px; margin-top: 20px; border-radius: 8px; box-shadow: 0 0 10px #ccc; }
+    select { width: 100%; }
+
+    .reminder { background: #ffeeba; padding: 15px; margin-bottom: 20px; border: 1px solid #f0ad4e; border-radius: 5px; }
+    .print-btn { background: #28a745; color: #fff; border: none; padding: 10px; cursor: pointer; margin-top: 10px; border-radius: 5px; }
+
+    @media print {
+      body * { visibility: hidden; }
+      #reservationTable, #reservationTable * { visibility: visible; }
+      #reservationTable { position: absolute; top: 0; right: 0; left: 0; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- صفحة تسجيل الدخول -->
+  <div id="loginPage">
+    <h2>تسجيل الدخول</h2>
+    <form id="loginForm">
+      <label>الاسم:</label>
+      <input type="text" id="userName" required>
+      <label>البريد الإلكتروني:</label>
+      <input type="email" id="userEmail" required>
+      <button type="submit">طلب تسجيل</button>
+    </form>
+    <p id="loginMessage" style="margin-top:10px; color: green;"></p>
+    <button onclick="approveManually()" style="margin-top: 20px; background: orange;">موافقة المشرف (للتجربة)</button>
+  </div>
+
+  <!-- نظام الحجوزات -->
+  <div id="mainSystem">
+    <div class="reminder">
+      <strong>تذكير:</strong> يوجد حجز غدًا. الرجاء التأكيد.
+      <button onclick="acknowledgeReminder()">تمت الموافقة</button>
+    </div>
+
+    <h1>جدول الحجوزات</h1>
+    <button class="print-btn" onclick="window.print()">🖨️ طباعة الحجوزات</button>
+    <table id="reservationTable">
+      <thead>
+        <tr>
+          <th>اسم الجهة الطالبة</th>
+          <th>الوجهة</th>
+          <th>التاريخ</th>
+          <th>الوقت</th>
+          <th>عدد الباصات</th>
+          <th>حجم الباص</th>
+          <th>رقم المشرف</th>
+          <th>تعديل</th>
+          <th>حذف</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <h2>إضافة / تعديل حجز</h2>
+    <form id="reservationForm">
+      <input type="hidden" id="editIndex" value="">
+      <label>اسم الجهة الطالبة:</label>
+      <input type="text" id="entityName" required>
+      <label>الوجهة:</label>
+      <input type="text" id="destination" required>
+      <label>التاريخ:</label>
+      <input type="date" id="date" required>
+      <label>الوقت:</label>
+      <input type="time" id="time" required>
+      <label>عدد الباصات:</label>
+      <input type="number" id="busCount" required>
+      <label>حجم الباص:</label>
+      <select id="busSize">
+        <option value="صغير">صغير</option>
+        <option value="متوسط">متوسط</option>
+        <option value="كبير">كبير</option>
+      </select>
+      <label>رقم المشرف للتواصل:</label>
+      <input type="text" id="supervisorPhone" required>
+      <button type="submit">حفظ الحجز</button>
+    </form>
+  </div>
+
+  <!-- صوت التنبيه -->
+  <audio id="alertSound" src="https://www.soundjay.com/button/beep-07.wav" loop></audio>
+
+  <script>
+    const loginPage = document.getElementById("loginPage");
+    const mainSystem = document.getElementById("mainSystem");
+    const loginForm = document.getElementById("loginForm");
+    const loginMessage = document.getElementById("loginMessage");
+
+    const approvedUsersKey = "approvedUsers";
+    const currentUserKey = "currentUser";
+
+    function checkUserAccess() {
+      const currentUser = localStorage.getItem(currentUserKey);
+      const approvedUsers = JSON.parse(localStorage.getItem(approvedUsersKey)) || [];
+
+      if (currentUser && approvedUsers.includes(currentUser)) {
+        loginPage.style.display = "none";
+        mainSystem.style.display = "block";
+        loadReservations();
+        const reminder = document.querySelector(".reminder");
+        if (reminder && reminder.style.display !== "none") {
+          const audio = document.getElementById("alertSound");
+          if (audio) audio.play();
+        }
+      } else {
+        loginPage.style.display = "block";
+        mainSystem.style.display = "none";
+      }
+    }
+
+    loginForm.addEventListener("submit", function(e) {
+      e.preventDefault();
+      const name = document.getElementById("userName").value;
+      const email = document.getElementById("userEmail").value;
+
+      localStorage.setItem("pendingUser", JSON.stringify({ name, email }));
+      localStorage.setItem(currentUserKey, email);
+
+      alert("تم إرسال طلب تسجيل إلى البريد: Anahmed@mowasalat.com للموافقة");
+      loginMessage.textContent = "بانتظار الموافقة من الإدارة...";
+    });
+
+    function approveManually() {
+      const pending = JSON.parse(localStorage.getItem("pendingUser"));
+      if (pending && pending.email) {
+        let approved = JSON.parse(localStorage.getItem(approvedUsersKey)) || [];
+        if (!approved.includes(pending.email)) {
+          approved.push(pending.email);
+          localStorage.setItem(approvedUsersKey, JSON.stringify(approved));
+          localStorage.setItem(currentUserKey, pending.email);
+          alert("تمت الموافقة على الدخول.");
+          checkUserAccess();
+        }
+      }
+    }
+
+    const form = document.getElementById("reservationForm");
+    const tableBody = document.querySelector("#reservationTable tbody");
+    const LOCAL_STORAGE_KEY = "busReservations";
+
+    function loadReservations() {
+      tableBody.innerHTML = "";
+      const data = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (data) {
+        JSON.parse(data).forEach(res => addRowToTable(res));
+      }
+    }
+
+    function saveReservations() {
+      const rows = Array.from(tableBody.rows).map(row => {
+        return {
+          entityName: row.cells[0].textContent,
+          destination: row.cells[1].textContent,
+          date: row.cells[2].textContent,
+          time: row.cells[3].textContent,
+          busCount: row.cells[4].textContent,
+          busSize: row.cells[5].textContent,
+          supervisorPhone: row.cells[6].textContent
+        };
+      });
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(rows));
+    }
+
+    function addRowToTable(res) {
+      const now = new Date();
+      const reservationDateTime = new Date(`${res.date}T${res.time}`);
+      const isPast = reservationDateTime < now;
+      const rowColor = isPast ? 'background-color: #f8d7da;' : 'background-color: #d4edda;';
+
+      const row = document.createElement("tr");
+      row.setAttribute("style", rowColor);
+      row.innerHTML = `
+        <td>${res.entityName}</td>
+        <td>${res.destination}</td>
+        <td>${res.date}</td>
+        <td>${res.time}</td>
+        <td>${res.busCount}</td>
+        <td>${res.busSize}</td>
+        <td>${res.supervisorPhone || ''}</td>
+        <td><button onclick="editReservation(this)">تعديل</button></td>
+        <td><button onclick="deleteReservation(this)">حذف</button></td>
+      `;
+      tableBody.appendChild(row);
+    }
+
+    function editReservation(button) {
+      const row = button.closest("tr");
+      const cells = row.querySelectorAll("td");
+
+      document.getElementById("entityName").value = cells[0].textContent;
+      document.getElementById("destination").value = cells[1].textContent;
+      document.getElementById("date").value = cells[2].textContent;
+      document.getElementById("time").value = cells[3].textContent;
+      document.getElementById("busCount").value = cells[4].textContent;
+      document.getElementById("busSize").value = cells[5].textContent;
+      document.getElementById("supervisorPhone").value = cells[6].textContent;
+      document.getElementById("editIndex").value = row.rowIndex - 1;
+    }
+
+    function deleteReservation(button) {
+      const row = button.closest("tr");
+      row.remove();
+      saveReservations();
+    }
+
+    form.addEventListener("submit", function(e) {
+      e.preventDefault();
+
+      const entityName = document.getElementById("entityName").value;
+      const destination = document.getElementById("destination").value;
+      const date = document.getElementById("date").value;
+      const time = document.getElementById("time").value;
+      const busCount = document.getElementById("busCount").value;
+      const busSize = document.getElementById("busSize").value;
+      const supervisorPhone = document.getElementById("supervisorPhone").value;
+      const editIndex = document.getElementById("editIndex").value;
+
+      const newReservation = {
+        entityName, destination, date, time, busCount, busSize, supervisorPhone
+      };
+
+      if (editIndex === "") {
+        addRowToTable(newReservation);
+      } else {
+        tableBody.deleteRow(editIndex);
+        addRowToTable(newReservation);
+        document.getElementById("editIndex").value = "";
+      }
+
+      saveReservations();
+      form.reset();
+    });
+
+    function acknowledgeReminder() {
+      document.querySelector(".reminder").style.display = "none";
+      const audio = document.getElementById("alertSound");
+      if (audio) audio.pause();
+    }
+
+    window.addEventListener("load", checkUserAccess);
+  </script>
+</body>
+</html>
